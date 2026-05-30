@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "hydraulic-leaffix",
+  "version": "1.1.0",
+  "name": "Hydraulic Pack-Converter Crash Fix",
+  "description": "Wraps Hydraulic's (Bedframe-supplied) Geyser pack-converter so a single failing texture transformer (leaf particle spritesheet, map icons, etc. on MC 1.21.11) no longer aborts the whole pack conversion. Lets modded blocks such as Waystones convert and render for Bedrock players via Geyser.",
+  "authors": [
+    "FWQClaude"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "*"
+  },
+  "mixins": [
+    "hydleaffix.mixins.json"
+  ]
+}

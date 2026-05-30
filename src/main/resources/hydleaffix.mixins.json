@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "dev.fwq.hydleaffix.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "TextureConverterMixin",
+    "GridSpritesheetParticleTransformerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
