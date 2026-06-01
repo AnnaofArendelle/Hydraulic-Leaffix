@@ -11,7 +11,7 @@
 #
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="1.2.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_ROOT="${SERVER_ROOT:-$(dirname "$SCRIPT_DIR")}"
 
@@ -22,8 +22,9 @@ MIXIN_JAR="$(find "$SERVER_ROOT/libraries" -name 'sponge-mixin-*.jar' 2>/dev/nul
 MEXTRAS_JAR="$(find "$SERVER_ROOT/.fabric" -name 'mixinextras-*.jar' 2>/dev/null | head -1)"
 ASM_JARS="$(find "$SERVER_ROOT/libraries/org/ow2/asm" -name '*.jar' 2>/dev/null | tr '\n' ':')"
 BEDFRAME_JAR="$(find "$SERVER_ROOT/mods" -name 'bedframe-*.jar' 2>/dev/null | head -1)"
+HYDRAULIC_JAR="$(find "$SERVER_ROOT/mods" -name 'hydraulic-fabric*.jar' 2>/dev/null | head -1)"
 
-for v in MIXIN_JAR MEXTRAS_JAR BEDFRAME_JAR; do
+for v in MIXIN_JAR MEXTRAS_JAR BEDFRAME_JAR HYDRAULIC_JAR; do
   if [ -z "${!v}" ]; then
     echo "!! Could not find $v under $SERVER_ROOT. Set SERVER_ROOT to your server directory." >&2
     exit 1
@@ -32,6 +33,7 @@ done
 echo ">> sponge-mixin : $MIXIN_JAR"
 echo ">> mixinextras  : $MEXTRAS_JAR"
 echo ">> bedframe     : $BEDFRAME_JAR"
+echo ">> hydraulic    : $HYDRAULIC_JAR"
 
 # --- extract the pack-converter (and its sibling libs) bundled in Bedframe ----------------
 # Bedframe carries the exact converter build that is loaded at runtime (contains
@@ -41,7 +43,10 @@ trap 'rm -rf "$WORK"' EXIT
 unzip -o -q "$BEDFRAME_JAR" 'META-INF/jars/*.jar' -d "$WORK"
 CONV_LIBS="$(find "$WORK/META-INF/jars" -name '*.jar' | tr '\n' ':')"
 
-CP="$MIXIN_JAR:$MEXTRAS_JAR:$ASM_JARS$CONV_LIBS"
+# hydraulic-fabric.jar is needed compile-only so the @WrapOperation handler can declare its
+# receiver as the real org.geysermc.hydraulic.block.Materials$Material type (MixinExtras requires
+# the exact type, not Object). Provided at runtime by the Hydraulic mod.
+CP="$MIXIN_JAR:$MEXTRAS_JAR:$ASM_JARS$CONV_LIBS:$HYDRAULIC_JAR"
 
 # --- compile -----------------------------------------------------------------------------
 OUT="$SCRIPT_DIR/build/classes"
