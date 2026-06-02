@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "hydraulic-leaffix",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "name": "Hydraulic Pack-Converter Crash Fix",
-  "description": "Wraps Hydraulic's (Bedframe-supplied) Geyser pack-converter so a single failing texture transformer (leaf particle spritesheet, map icons, etc. on MC 1.21.11) no longer aborts the whole pack conversion, quietly skips the doomed vanilla grid-spritesheet particle transformers (instead of flooding the log with per-frame 'is missing' warnings + crashes), and redirects modded custom blocks' break-particle texture to the block's own in-pack texture so Waystones-style blocks get correct (non-purple) break particles for Bedrock players via Geyser.",
+  "description": "Wraps Hydraulic's (Bedframe-supplied) Geyser pack-converter so a single failing texture transformer (leaf particle spritesheet, map icons, etc. on MC 1.21.11) no longer aborts the whole pack conversion, quietly skips the doomed vanilla grid-spritesheet particle transformers (instead of flooding the log with per-frame 'is missing' warnings + crashes), redirects modded custom blocks' break-particle texture to the block's own in-pack texture so Waystones-style blocks get correct (non-purple) break particles for Bedrock players via Geyser, and lengthens the Bedrock destructible_by_mining timer to the bare-hand Java break time so Bedrock players can break those blocks in survival mode.",
   "authors": [
     "FWQClaude"
   ],

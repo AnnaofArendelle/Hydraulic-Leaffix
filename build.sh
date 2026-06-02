@@ -11,7 +11,7 @@
 #
 set -euo pipefail
 
-VERSION="1.2.2"
+VERSION="1.2.3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_ROOT="${SERVER_ROOT:-$(dirname "$SCRIPT_DIR")}"
 

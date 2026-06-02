@@ -2,11 +2,13 @@
 
 一个极小的 Fabric Mixin 模组，用于修复 **基岩版（Geyser）玩家看不到 / 用不了模组方块**（典型：传送石碑 Waystones）的一系列问题。
 
-- **版本**：1.2.2
+- **版本**：1.2.3
 - **目标 Minecraft**：1.21.11（Fabric）
 - **运行依赖**：服务端需同时存在 Geyser + Hydraulic + Bedframe（本模组是给它们"打补丁"）
 - **许可证**：MIT
 
+> **1.2.3**：**修复基岩版玩家在生存模式下无法打破石碑**——表现为挖掘后"挖掘失败、石碑依旧还在、不破碎不掉落"，而创造模式破坏、生存模式放置均正常。根因是 Hydraulic 把 Java **硬度**当作基岩 `destructible_by_mining` 的"秒数"下发（硬度 ≠ 秒），加上 Geyser 对自定义方块走"服务端权威破坏"，导致基岩客户端按这个偏短的计时**提前判定破坏**，而服务端进度还不够 → Geyser 把方块**还原**。本版把该计时改写为**裸手破坏所需的真实秒数（硬度 × 5）**，使客户端在服务端破坏完成前不会提前判定（详见 [§3.6](#36-生存模式破坏修复blockpackmodulemixin)）。
+>
 > **1.2.2**：**消除启动时上千行 `particle/xxx_n.png is missing. Please report this.` 刷屏**——拦截并吞掉粒子转换器逐帧打印的 missing 警告，并把崩溃兜底**按粒子表种类去重**（每种只记一行，约 5 行/次启动）（详见 [§3.2](#32-粒子表兜底gridspritesheetparticletransformermixin)）。同时在文档中记录了**普通石碑在基岩版放不下**的真正原因——一个**与本模组无关**的残留 Geyser 配置文件，需手动删除（详见 [§6 故障排查](#6-故障排查)）。
 >
 > **1.2.1**：在 1.1.0「让方块能显示」的基础上，修复石碑在基岩版**破坏碎屑显示为紫色缺失贴图**的问题。物品栏缩略图维持上半截显示（按需求不改动）。
@@ -100,9 +102,35 @@ java.lang.NullPointerException: value
 
 > 关于问题 ②（**普通石碑** `waystones:waystone` 放下去只剩半块、约 1 秒后消失）：**已定位**，与本模组的贴图/材质修复**无关**。真正原因是一个残留的 Geyser 配置文件 `config/Geyser-Fabric/custom_mappings/waystones.json` 把**仅** `waystones:waystone` 重定义成了 `lodestone` 单方块并覆盖了它的方块物品，与 Hydraulic 的正规注册冲突——所以**只有这一种**石碑放不下、其余石碑都正常。**删除该文件即可修复**，详见 [§6 故障排查](#6-故障排查)。
 
+### 3.6 生存模式破坏修复（`BlockPackModuleMixin`）
+
+**现象（1.2.3 修复）**：基岩版玩家在**生存模式**下挖掘石碑时"挖掘失败、石碑依旧还在、不破碎也不掉落"；而**创造模式破坏**与**生存模式放置**都正常。Java 版玩家不受影响。
+
+**为什么创造正常、生存不正常**：创造模式下基岩客户端是"一击即破"（`isInstabuild()` 直接破坏，无计时）；生存模式下破坏要走计时进度。两者代码路径完全不同，所以创造能破、生存不能。
+
+**根因**（Java 硬度被当成秒 + Geyser 服务端权威破坏的计时错配）：
+
+- Hydraulic 在 `onDefineCustomBlocks` 里这样下发基岩方块的破坏计时：
+
+  ```java
+  .destructibleByMining(Float.valueOf(block.method_36555()))   // method_36555() = Java 硬度
+  ```
+
+  即把 Java **硬度**直接当作基岩 `minecraft:destructible_by_mining` 的 `seconds_to_destroy`（秒）。**但硬度不是秒**：石碑硬度 `5.0`，用镐子真实破坏约 0.75–1.5 秒，**裸手约 25 秒**（原版公式：裸手秒数 = 硬度 × 100 tick ÷ 20 tps = 硬度 × 5）。
+- 石碑是以**非原版方块覆盖**（`registerOverride(JavaBlockState, …)`）注册的，于是 Geyser 的 `BlockBreakHandler` 把它标为 `serverSideBlockBreaking = true`：破坏由**服务端按工具计算进度**驱动，进度到 `1.0`（或客户端判定破坏的那一刻进度 ≥ `0.65`）才真正破坏。
+- 然而**基岩客户端**会**按它自己的 `destructible_by_mining` 计时（5 秒，且不分工具）自行判定破坏**（发 `BLOCK_PREDICT_DESTROY`）。裸手/拿错工具时，5 秒时服务端进度只有约 `0.2`（< `0.65`），于是 Geyser 认为"客户端以为破了、但服务端不认"，把方块**还原**（`handleContinueDestroy` 里 `restoreCorrectBlock`）→ 这正是"挖掘失败、石碑还在"。用对的镐子时服务端约 1–4 秒就到 `1.0`（早于 5 秒），所以**有时又像是正常的**——这与"看工具、时灵时不灵"完全吻合。
+
+**补法**（只动基岩客户端的计时，不动服务端破坏数学）：用 `@ModifyArg` 把 `destructibleByMining(Float)` 的实参从"硬度"改写为**裸手破坏真实秒数 `硬度 × 5`**。这样基岩客户端的自行判定时间 ≥ 任何工具下服务端的破坏耗时，客户端**绝不会先于服务端判定**，也就不会触发还原：
+
+- **裸手**：客户端 25 秒判定时，服务端进度恰好到 `1.0` → 正常破坏（约 25 秒，无掉落——与 Java 裸手挖石碑一致）。
+- **任何镐子**：服务端 1–4 秒到 `1.0`，由 `tick()` 路径触发破坏，Geyser 经 `sendBedrockBlockDestroy` 强制客户端破坏、并用 `BLOCK_UPDATE_BREAK` 实时把破坏动画对齐到服务端进度——所以**实际破坏速度仍由工具决定、很快**，那个 25 秒上限根本到不了。
+- **掉落物**由 **Java 服务端**按真实手持工具判定（镐子掉落、裸手不掉落），本补丁**不改 `JavaBlockState.blockHardness`**，故掉落与破坏速度都与 Java 完全一致。
+
+> 仅在硬度为正数时改写；瞬破方块（硬度 0）与不可破坏方块（硬度 -1）保持原样。`@ModifyArg` 只需用到 `java.lang.Float`，**不引入对 Geyser API 类的编译期依赖**（目标用描述符字符串匹配）。`require = 0` / `remap = false`：未命中只是不生效，绝不崩服。
+
 ## 4. 安装使用
 
-1. 把 `hydraulic-leaffix-1.2.2.jar` 放进服务端的 `mods/` 文件夹。
+1. 把 `hydraulic-leaffix-1.2.3.jar` 放进服务端的 `mods/` 文件夹。
 2. （若之前装过旧版）务必删除旧的 `hydraulic-leaffix-*.jar`，同 mod id 不能并存。
 3. 重启服务端。
 
@@ -121,6 +149,7 @@ grep -E "Failed to convert pack for mod waystones|HydraulicLeafFix" "$LOG"
 - ✅ 成功：`Failed to convert pack for mod waystones` **消失**；可能出现 `[HydraulicLeafFix] Skipped a failing texture transformer (...)` 表示转换兜底在工作。
 - ✅ 方块修复生效：出现 `[HydraulicLeafFix] Redirected break-particle texture to the block's own in-pack texture: ...`（每次启动只打印第一条）。
 - ✅ 粒子刷屏消除（1.2.2）：成片的 `particle/xxx_n.png is missing. Please report this.` **不再出现**；原本每模组每粒子表各一次的崩溃日志，也收敛为每种粒子表一行的 `[HydraulicLeafFix] Skipped the crashing '<XxxParticleTransformer>' vanilla particle spritesheet transform ...`（整次启动约 5 行）。
+- ✅ 生存破坏修复生效（1.2.3）：出现 `[HydraulicLeafFix] Lengthened Bedrock destructible_by_mining ... 5.0s -> 25.0s ...`（每次启动只打印第一条）。然后基岩版进服、生存模式下用镐子可正常挖掉石碑并掉落，裸手也能挖掉（较慢、无掉落，与 Java 一致），不再"挖掘失败、石碑还在"。
 - 然后基岩版进服，传送石碑应可正常显示，破坏碎屑不再是紫色。
 
 ## 6. 故障排查
@@ -152,7 +181,7 @@ grep -E "Failed to convert pack for mod waystones|HydraulicLeafFix" "$LOG"
 # 或显式指定服务端根目录
 SERVER_ROOT=/path/to/server ./build.sh
 ```
-脚本会：从服务端 `libraries/` 取 sponge-mixin 与 ASM、从 `.fabric/` 取 MixinExtras、从 `mods/bedframe-*.jar` 解出与运行时一致的 `pack-converter` 类、从 `mods/hydraulic-fabric*.jar` 取 Hydraulic 类（供 `@WrapOperation` 处理方法声明真实的 `Materials$Material` 形参类型）作为编译依赖，编译全部 Mixin 并打包出 `hydraulic-leaffix-1.2.2.jar`。
+脚本会：从服务端 `libraries/` 取 sponge-mixin 与 ASM、从 `.fabric/` 取 MixinExtras、从 `mods/bedframe-*.jar` 解出与运行时一致的 `pack-converter` 类、从 `mods/hydraulic-fabric*.jar` 取 Hydraulic 类（供 `@WrapOperation` 处理方法声明真实的 `Materials$Material` 形参类型）作为编译依赖，编译全部 Mixin 并打包出 `hydraulic-leaffix-1.2.3.jar`。
 
 ### 依赖说明（编译期 compile-only，运行期由服务端提供）
 - `net.fabricmc:sponge-mixin`（`@Mixin`、`@At`）
@@ -166,12 +195,12 @@ SERVER_ROOT=/path/to/server ./build.sh
 hydraulic-leaffix/
 ├── README.md
 ├── build.sh                                  # 复现编译脚本
-├── hydraulic-leaffix-1.2.2.jar               # 编译好的成品
+├── hydraulic-leaffix-1.2.3.jar               # 编译好的成品
 └── src/main/
     ├── java/dev/fwq/hydleaffix/mixin/
     │   ├── TextureConverterMixin.java         # 通用兜底（转换崩溃，主修复）
     │   ├── GridSpritesheetParticleTransformerMixin.java  # 粒子表：探测全缺失即跳过，消除 missing 刷屏 + 崩溃
-    │   └── BlockPackModuleMixin.java          # 把破坏碎屑贴图改指向方块自身的同包贴图（修紫块）
+    │   └── BlockPackModuleMixin.java          # ① 把破坏碎屑贴图改指向方块自身的同包贴图（修紫块）；② 把基岩破坏计时从硬度改为裸手真实秒数（修生存破坏）
     └── resources/
         ├── fabric.mod.json
         └── hydleaffix.mixins.json
@@ -179,6 +208,8 @@ hydraulic-leaffix/
 
 ## 9. 版本历史
 
+- **1.2.3**：
+  - `BlockPackModuleMixin` 新增 `@ModifyArg`，**修复基岩版生存模式无法破坏石碑**（"挖掘失败、石碑还在、不掉落"；创造破坏 / 生存放置均正常）。根因：Hydraulic 把 Java **硬度**当作基岩 `destructible_by_mining` 的**秒数**下发（硬度 ≠ 秒），而石碑以非原版覆盖注册 → Geyser 走 `serverSideBlockBreaking`（服务端按工具计进度），基岩客户端却按那个偏短的计时**提前判定破坏**、服务端进度不足 → Geyser **还原方块**。补法：把该计时改写为**裸手真实秒数（硬度 × 5）**，使客户端不会先于服务端判定；**不改 `blockHardness`**，故破坏速度与掉落仍随手持工具、与 Java 一致。见 [§3.6](#36-生存模式破坏修复blockpackmodulemixin)。
 - **1.2.2**：
   - `GridSpritesheetParticleTransformerMixin` 双层处理，**消除启动时约 1150 行 `... is missing. Please report this.` 刷屏**：① `@WrapOperation` 吞掉 `transform` 内部 `TransformContext.warn(String)` 打印的逐帧 missing 告警；② `@WrapMethod` 仍捕获越界崩溃保证整包转换继续，并**按转换器类去重**（每种粒子表一行，约 5 行；原先约 115 行）。源帧存在时不会产生该告警、照常转换。刻意不用 `peekOrVanilla` 探测方案，以**避免编译期引用以 jar-in-jar 提供、不在编译类路径上的 `net.kyori.adventure.key.Key`**。见 [§3.2](#32-粒子表兜底gridspritesheetparticletransformermixin)。
   - 文档化**普通石碑 `waystones:waystone` 放不下**（问题 ②）的真正根因：残留的 `config/Geyser-Fabric/custom_mappings/waystones.json` 把仅此一块重定义为 `lodestone` 单方块并覆盖其方块物品，与 Hydraulic 注册冲突，**删除该文件即修复**（非本模组改动）。见 [§6](#6-故障排查)。
@@ -194,4 +225,5 @@ hydraulic-leaffix/
 - 物品栏缩略图按基岩自定义方块机制只显示**单个**状态的外观（当前为上半截）；按需求维持现状，未改动。
 - 破坏碎屑修复改用方块**自身的面贴图**作为碎屑贴图（保证同包可解析）；与 Java 原版指定的 `#particle`（如 polished_andesite）相比贴图略有差异，但不再是紫色缺失块。
 - **普通石碑 `waystones:waystone` 放不下**已查明并非本模组范围内的问题，而是残留 Geyser 配置文件 `config/Geyser-Fabric/custom_mappings/waystones.json` 与 Hydraulic 注册冲突；删除该文件即修复，详见 [§6](#6-故障排查)。
+- 生存破坏修复以**裸手破坏耗时（硬度 × 5 秒）**为基岩客户端计时上限，已覆盖站立裸手/拿错工具等常见情况。极端情况下（如**水下 + 悬空**裸手挖，原版即有 ×5 / ×5 额外减速）实际服务端耗时可能超过该上限，届时仍可能"挖不掉"——这属罕见姿势，且失败是安全的（只是没破坏，不会损坏存档）；正常站立用镐子破坏不受影响。
 - 本模组依赖 Bedframe 内嵌的那一份 converter 被加载，并依赖 Hydraulic 的 `BlockPackModule` / `Materials$Material` 类与方法签名。若日后移除 Bedframe 或更换 Hydraulic/Bedframe 版本，目标类/方法可能变化；全部 Mixin 均 `required:false` / `require=0`，**未命中只记日志、绝不会让服务器崩**，只是对应补丁不生效。
