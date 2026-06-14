@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "hydraulic-leaffix",
-  "version": "1.2.3",
+  "version": "1.3.1",
   "name": "Hydraulic Pack-Converter Crash Fix",
-  "description": "Wraps Hydraulic's (Bedframe-supplied) Geyser pack-converter so a single failing texture transformer (leaf particle spritesheet, map icons, etc. on MC 1.21.11) no longer aborts the whole pack conversion, quietly skips the doomed vanilla grid-spritesheet particle transformers (instead of flooding the log with per-frame 'is missing' warnings + crashes), redirects modded custom blocks' break-particle texture to the block's own in-pack texture so Waystones-style blocks get correct (non-purple) break particles for Bedrock players via Geyser, and lengthens the Bedrock destructible_by_mining timer to the bare-hand Java break time so Bedrock players can break those blocks in survival mode.",
+  "description": "Patches the Geyser+Hydraulic+Bedframe stack for Bedrock players: wraps Hydraulic's (Bedframe-supplied) pack-converter so one failing texture transformer no longer aborts the whole pack conversion, quietly skips the doomed vanilla grid-spritesheet particle transformers, redirects modded blocks' break-particle texture to the block's own in-pack texture, lengthens the Bedrock destructible_by_mining timer so survival breaking works, lets the server boot on Geyser builds that dropped the custom-entity API by disabling Bedframe's entity translators when that API is absent, and converts Bedrock-bound items that carry modded data components through Polymer's round-trip so Geyser can read modded inventories/chests without desyncing item pickup/placement.",
   "authors": [
     "FWQClaude"
   ],

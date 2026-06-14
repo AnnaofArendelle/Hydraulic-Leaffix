@@ -6,7 +6,9 @@
   "mixins": [
     "TextureConverterMixin",
     "GridSpritesheetParticleTransformerMixin",
-    "BlockPackModuleMixin"
+    "BlockPackModuleMixin",
+    "TranslationManagerMixin",
+    "PolymerBedrockItemFixMixin"
   ],
   "injectors": {
     "defaultRequire": 1
